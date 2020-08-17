@@ -8,18 +8,51 @@ output:
 
 ## Loading and preprocessing the data
 
+Here we first unzip and load the csv file into R. Then, we convert the date and interval into one single datetime variable for processing. This is achieved by first padding zeros to the interval, then concatenating it with the date, and parsed with ymd_hm function from lubridate library. Finally, we form the processed dataframe by taking the datetime formatted and steps variable.
 
+```{r}
+library(lubridate)
+library(stringr)
+library(dplyr)
+unzip("activity.zip")
+act <- read.csv("activity.csv")
+act_df <- data.frame(datetime=ymd_hm(paste(act$date, str_pad(act$interval, 4, side="left", pad="0"))), steps=act$steps)
+```
 
 ## What is mean total number of steps taken per day?
 
+Here, we calculte the total number of steps per day by grouping the date in our datetime variable. Below we show the distribution by plotting the histogram. Then we calculate the mean and median of the number of steps per day.
 
+```{r}
+steps_by_day <- with(act_df, aggregate(steps, by=list(date(datetime)), FUN=sum, na.rm=TRUE))
+hist(steps_by_day$x, breaks=20)
+mean(steps_by_day$x)
+median(steps_by_day$x)
+```
 
 ## What is the average daily activity pattern?
 
+Next, we compute the average number of steps over each 5 mins inteval and plot the resulting time series. The interval at which the maximum number of steps is recorded is also calculated.
 
+```{r}
+steps_by_interval <- tapply(act_df$steps, strftime(act_df$datetime, format="%H:%M"), FUN=sum, na.rm=TRUE)
+plot(steps_by_interval, type="l", xaxt="n", xlab="Time", ylab="Average Number of Steps", main="Average number of steps in one day")
+xnames <- names(steps_by_interval)
+axis(1, at=1:length(xnames), labels=xnames)
+which(steps_by_interval==max(steps_by_interval))
+```
 
 ## Imputing missing values
 
+```{R}
+sum(is.na(act_df$steps))
 
+steps_by_hour <- tapply(act_df$steps, strftime(act_df$datetime, format="%Y-%m-%d %H"), FUN=sum, na.rm=T)
+act_df_imputed <- mutate(act_df, steps=ifelse(is.na(steps), steps_by_hour[strftime(datetime, "%Y-%m-%d %H")], steps))
+steps_by_day <- with(act_df_imputed, aggregate(steps, by=list(date(datetime)), FUN=sum, na.rm=TRUE))
+hist(steps_by_day$x, breaks=20)
+mean(steps_by_day$x)
+median(steps_by_day$x)
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
