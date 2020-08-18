@@ -70,26 +70,33 @@ Here, we calculate the total number of steps per day by grouping the date in our
 
 
 ```r
-steps_by_day <- with(act_df, aggregate(steps, by=list(date(datetime)), FUN=sum, na.rm=TRUE))
-hist(steps_by_day$x, breaks=20, main="Daily number of steps", xlab="Number of steps", ylab="Frequency")
+steps_by_day <- act[!is.na(act$steps),] %>% group_by(date) %>% summarize(sum=sum(steps, na.rm=TRUE))
+```
+
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+```r
+hist(steps_by_day$sum, breaks=50, main="Daily number of steps", xlab="Number of steps", ylab="Frequency")
 ```
 
 ![](PA1_template_files/figure-html/unnamed-chunk-2-1.png)<!-- -->
 
 ```r
-mean(steps_by_day$x)
+mean(steps_by_day$sum)
 ```
 
 ```
-## [1] 9354.23
+## [1] 10766.19
 ```
 
 ```r
-median(steps_by_day$x)
+median(steps_by_day$sum)
 ```
 
 ```
-## [1] 10395
+## [1] 10765
 ```
 
 ## What is the average daily activity pattern?
@@ -98,30 +105,37 @@ Next, we compute the average number of steps over each 5 mins interval and plot 
 
 
 ```r
-steps_by_interval <- tapply(act_df$steps, as.integer(strftime(act_df$datetime, format="%H%M")), FUN=mean, na.rm=TRUE)
-plot(steps_by_interval, type="l", xaxt="n", xlab="Interval", ylab="Average Number of Steps", main="Average number of steps in one day")
-xnames <- names(steps_by_interval)
-axis(1, at=60*(1:4)+1, xnames[60*(1:4)+1])
+steps_by_interval <- act[!is.na(act$steps),] %>% group_by(interval) %>% summarize(mean=mean(steps, na.rm=TRUE))
+```
+
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+```r
+with(steps_by_interval, plot(interval, mean, type="l", xlab="Interval", ylab="Average Number of Steps", main="Average number of steps in one day"))
 ```
 
 ![](PA1_template_files/figure-html/unnamed-chunk-3-1.png)<!-- -->
 
 ```r
-which(steps_by_interval==max(steps_by_interval))
+steps_by_interval[which(steps_by_interval$mean==max(steps_by_interval$mean)),]
 ```
 
 ```
-## 1635 
-##  200
+## # A tibble: 1 x 2
+##   interval  mean
+##      <int> <dbl>
+## 1      835  206.
 ```
 
 ## Imputing missing values
 
-Notice that the original data contains a number of NAs in the steps information. The number of such data is shown below. To impute the missing data, we calculate the number of steps measured during the same hour in the same day of the missing data. After imputing the data, we then plotted the histogram and calculated the mean and median of the new data set. Notice that they are the same as the original data. This is confirmed by looking at the NAs of the original data set, in which whenever there was NA value, it has occured over the entire day (and therefore averaging out steps over the same day/hour gives 0).
+Notice that the original data contains a number of NAs in the steps information. The number of such data is shown below. To impute the missing data, we calculate the number of steps measured during the same hour in the same day of the missing data. After imputing the data, we then plotted the histogram and calculated the mean and median of the new data set. The new mean and median has moved to the left as compared to before, since the imputed values are mostly zero.
 
 
 ```r
-sum(is.na(act_df$steps))
+sum(is.na(act$steps))
 ```
 
 ```
@@ -129,16 +143,30 @@ sum(is.na(act_df$steps))
 ```
 
 ```r
-steps_by_hour <- tapply(act_df$steps, strftime(act_df$datetime, format="%Y-%m-%d %H"), FUN=sum, na.rm=TRUE)
-act_df_imputed <- mutate(act_df, steps=ifelse(is.na(steps), steps_by_hour[strftime(datetime, "%Y-%m-%d %H")], steps))
-steps_by_day <- with(act_df_imputed, aggregate(steps, by=list(date(datetime)), FUN=sum, na.rm=TRUE))
-hist(steps_by_day$x, breaks=20, main="Daily number of steps", xlab="Number of steps", ylab="Frequency")
+steps_by_hour <- act %>% group_by(date, hour=interval %/% 100) %>% summarize(sum=sum(steps, na.rm=TRUE))
+```
+
+```
+## `summarise()` regrouping output by 'date' (override with `.groups` argument)
+```
+
+```r
+act_imputed <- act %>% mutate(hour=interval%/%100) %>% left_join(steps_by_hour, by=c("date","hour")) %>% mutate(steps=ifelse(is.na(steps), sum, steps)) %>% select(c("steps","date","interval"))
+steps_by_day <- act_imputed %>% group_by(date) %>% summarize(sum=sum(steps))
+```
+
+```
+## `summarise()` ungrouping output (override with `.groups` argument)
+```
+
+```r
+hist(steps_by_day$sum, breaks=50, main="Daily number of steps", xlab="Number of steps", ylab="Frequency")
 ```
 
 ![](PA1_template_files/figure-html/unnamed-chunk-4-1.png)<!-- -->
 
 ```r
-mean(steps_by_day$x)
+mean(steps_by_day$sum)
 ```
 
 ```
@@ -146,7 +174,7 @@ mean(steps_by_day$x)
 ```
 
 ```r
-median(steps_by_day$x)
+median(steps_by_day$sum)
 ```
 
 ```
@@ -155,18 +183,19 @@ median(steps_by_day$x)
 
 ## Are there differences in activity patterns between weekdays and weekends?
 
-Finally, we compare the activity patterns between weekdays and weekends by comparing them on 2 panels of a plot. 
+Finally, we compare the activity patterns between weekdays and weekends by comparing them on 2 panels on a plot. 
 
 
 ```r
-wday <- as.factor(ifelse(grepl("S(at|un)", weekdays(act_df_imputed$datetime, abbr=TRUE)), "weekend", "weekday"))
+steps_by_wday_interval <- act_imputed %>% mutate(wday=as.factor(ifelse(grepl("S(at|un)", weekdays(ymd(date), abbr=TRUE)), "weekend", "weekday"))) %>% group_by(wday, interval) %>% summarize(mean=mean(steps))
+```
 
-act_df_imputed_wday <- cbind(act_df_imputed, wday=wday)
-act_df_imputed_wday <- cbind(act_df_imputed_wday, time=as.integer(strftime(act_df_imputed_wday$datetime, format="%H%M")))
+```
+## `summarise()` regrouping output by 'wday' (override with `.groups` argument)
+```
 
-mean_steps_by_wday_time <- with(act_df_imputed_wday, aggregate(steps, by=list(wday, time), FUN=mean))
-colnames(mean_steps_by_wday_time) <- c('wday', 'time', 'meanSteps')
-ggplot(mean_steps_by_wday_time, aes(time, meanSteps)) + geom_line() + facet_wrap(.~wday, dir="v") + labs(title = "Average number of steps on weekdays/weekends", x="Interval", y="Mean number of steps")
+```r
+ggplot(steps_by_wday_interval, aes(interval, mean)) + geom_line() + facet_wrap(.~wday, dir="v") + labs(title = "Average number of steps on weekdays/weekends", x="Interval", y="Mean number of steps")
 ```
 
 ![](PA1_template_files/figure-html/unnamed-chunk-5-1.png)<!-- -->
