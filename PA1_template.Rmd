@@ -14,6 +14,8 @@ Here we first unzip and load the csv file into R. Then, we convert the date and 
 library(lubridate)
 library(stringr)
 library(dplyr)
+Sys.setenv("LANGUAGE"="En")
+Sys.setlocale("LC_ALL", "English")
 unzip("activity.zip")
 act <- read.csv("activity.csv")
 act_df <- data.frame(datetime=ymd_hm(paste(act$date, str_pad(act$interval, 4, side="left", pad="0"))), steps=act$steps)
@@ -32,10 +34,10 @@ median(steps_by_day$x)
 
 ## What is the average daily activity pattern?
 
-Next, we compute the average number of steps over each 5 mins inteval and plot the resulting time series. The interval at which the maximum number of steps is recorded is also calculated.
+Next, we compute the average number of steps over each 5 mins inteval and plot the resulting time series. The interval at which the maximum average number of steps is recorded is also calculated.
 
 ```{r}
-steps_by_interval <- tapply(act_df$steps, strftime(act_df$datetime, format="%H:%M"), FUN=sum, na.rm=TRUE)
+steps_by_interval <- tapply(act_df$steps, strftime(act_df$datetime, format="%H:%M"), FUN=mean, na.rm=TRUE)
 plot(steps_by_interval, type="l", xaxt="n", xlab="Time", ylab="Average Number of Steps", main="Average number of steps in one day")
 xnames <- names(steps_by_interval)
 axis(1, at=1:length(xnames), labels=xnames)
@@ -44,10 +46,11 @@ which(steps_by_interval==max(steps_by_interval))
 
 ## Imputing missing values
 
-```{R}
-sum(is.na(act_df$steps))
+Notice that the original data contains a number of NA in the steps information. The number of such data is shown below. To impute the missing data, we calculate the number of steps measured during the same hour of the same day for the missing data. After imputing the data, we then plotted the histogram and caulcated the mean and median of the new data set. Notice that they are the same as the original data. This is confirmed by looking at the NAs of the original data set, in which whenever there was NA value, it has occured over the entire day (and therefore averaging out steps over the same day/hour gives 0).
 
-steps_by_hour <- tapply(act_df$steps, strftime(act_df$datetime, format="%Y-%m-%d %H"), FUN=sum, na.rm=T)
+```{r}
+sum(is.na(act_df$steps))
+steps_by_hour <- tapply(act_df$steps, strftime(act_df$datetime, format="%Y-%m-%d %H"), FUN=sum, na.rm=TRUE)
 act_df_imputed <- mutate(act_df, steps=ifelse(is.na(steps), steps_by_hour[strftime(datetime, "%Y-%m-%d %H")], steps))
 steps_by_day <- with(act_df_imputed, aggregate(steps, by=list(date(datetime)), FUN=sum, na.rm=TRUE))
 hist(steps_by_day$x, breaks=20)
@@ -56,3 +59,14 @@ median(steps_by_day$x)
 ```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+wday <- as.factor(ifelse(grepl("S(at|un)", weekdays(act_df_imputed$datetime, abbr=TRUE)), "weekend", "weekday"))
+
+act_df_imputed_wday <- cbind(act_df_imputed, wday=wday)
+act_df_imputed_wday <- cbind(act_df_imputed_wday, time=strftime(act_df_imputed_wday$datetime, format="%H%M"))
+
+mean_steps_by_wday_time <- with(act_df_imputed_wday, aggregate(steps, by=list(wday, time), FUN=mean))
+colnames(mean_steps_by_wday_time) <- c('wday', 'time', 'meanSteps')
+ggplot(mean_steps_by_wday_time, aes(time, meanSteps, group=1)) + geom_line() + facet_grid(wday~.)
+
+
